@@ -35,9 +35,21 @@ public class OrderBook {
 
     public void addOrder(final Order order){
         if(order.getSide() == Side.Buy) {
-            buySidePriceLevels.computeIfAbsent(order.getPrice(), PriceLevel::new).addOrder(order);
+            if(buySidePriceLevels.containsKey(order.getPrice())){
+                buySidePriceLevels.get(order.getPrice()).addOrder(order);
+            } else {
+                PriceLevel priceLevel = new PriceLevel(order.getPrice());
+                buySidePriceLevels.put(order.getPrice(), priceLevel);
+                priceLevel.addOrder(order);
+            }
         } else {
-            sellSidePriceLevels.computeIfAbsent(order.getPrice(), PriceLevel::new).addOrder(order);
+            if(sellSidePriceLevels.containsKey(order.getPrice())){
+                sellSidePriceLevels.get(order.getPrice()).addOrder(order);
+            } else {
+                PriceLevel priceLevel = new PriceLevel(order.getPrice());
+                sellSidePriceLevels.put(order.getPrice(), priceLevel);
+                priceLevel.addOrder(order);
+            }
         }
         orders.put(order.getOrderId(), order);
     }
@@ -63,12 +75,20 @@ public class OrderBook {
         return orders.containsKey(order.getOrderId());
     }
 
-    public Optional<PriceLevel> getHighestBuySidePriceLevel(){
-        return buySidePriceLevels.values().stream().filter(priceLevel -> !OrderType.isMarketPrice(priceLevel.getPrice())).findFirst();
+    public PriceLevel getHighestBuySidePriceLevel(){
+        for(PriceLevel priceLevel : buySidePriceLevels.values()){
+            if(!OrderType.isMarketPrice(priceLevel.getPrice()))
+                return priceLevel;
+        }
+        return null;
     }
 
-    public Optional<PriceLevel> getLowestSellSidePriceLevel(){
-        return sellSidePriceLevels.values().stream().filter(priceLevel -> !OrderType.isMarketPrice(priceLevel.getPrice())).findFirst();
+    public PriceLevel getLowestSellSidePriceLevel(){
+        for(PriceLevel priceLevel : sellSidePriceLevels.values()){
+            if(!OrderType.isMarketPrice(priceLevel.getPrice()))
+                return priceLevel;
+        }
+        return null;
     }
 
     @Override

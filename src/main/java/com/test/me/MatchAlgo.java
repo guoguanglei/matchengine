@@ -6,7 +6,6 @@ import com.test.type.Side;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.BiPredicate;
 
 public class MatchAlgo {
@@ -23,7 +22,11 @@ public class MatchAlgo {
     }
 
     public MatchEngineCmdReply<?> addOrder(final Order order) {
-        final OrderBook orderBook = orderBooks.computeIfAbsent(order.getSecurityId(), OrderBook::new);
+        OrderBook orderBook = orderBooks.get(order.getSecurityId());
+        if(orderBook == null){
+            orderBook = new OrderBook(order.getSecurityId());
+            orderBooks.put(order.getSecurityId(), orderBook);
+        }
         if(order.getSide() == Side.Buy) {
             return addBuyOrder(order, orderBook);
         } else {
@@ -32,9 +35,9 @@ public class MatchAlgo {
     }
 
     public MatchEngineCmdReply<?> addBuyOrder(final Order order, final OrderBook orderBook){
-        final Optional<String> result = validateBuyOrder(order, orderBook);
-        if (result.isPresent()) {
-            return new MatchEngineCmdReply<>(MatchEngineCmdReplyType.Fail, result.get());
+        final String result = validateBuyOrder(order, orderBook);
+        if (result != null) {
+            return new MatchEngineCmdReply<>(MatchEngineCmdReplyType.Fail, result);
         } else {
             //terminate when sell price greater than buy price
             return new MatchEngineCmdReply<>(MatchEngineCmdReplyType.Success,
@@ -45,23 +48,23 @@ public class MatchAlgo {
         }
     }
 
-    private Optional<String> validateBuyOrder(final Order order, final OrderBook orderBook) {
+    private String validateBuyOrder(final Order order, final OrderBook orderBook) {
         if(order.getOrderType() == OrderType.Limit) {
-            final Optional<PriceLevel> priceLevel = orderBook.getHighestBuySidePriceLevel();
-            if (priceLevel.isPresent()) {
-                final double highestBuyPriceLevel = priceLevel.get().getPrice();
+            final PriceLevel priceLevel = orderBook.getHighestBuySidePriceLevel();
+            if (priceLevel != null) {
+                final double highestBuyPriceLevel = priceLevel.getPrice();
                 if (order.getPrice() > highestBuyPriceLevel + VALID_PRICE_RANGE) {
-                    return Optional.of(PRICE_IS_OUT_OF_RANGE);
+                    return PRICE_IS_OUT_OF_RANGE;
                 }
             }
         }
-        return Optional.empty();
+        return null;
     }
 
     public MatchEngineCmdReply<?> addSellOrder(final Order order, final OrderBook orderBook){
-        final Optional<String> result = validateSellOrder(order, orderBook);
-        if (result.isPresent()) {
-            return new MatchEngineCmdReply<>(MatchEngineCmdReplyType.Fail, result.get());
+        final String result = validateSellOrder(order, orderBook);
+        if (result != null) {
+            return new MatchEngineCmdReply<>(MatchEngineCmdReplyType.Fail, result);
         } else {
             //terminate when buy price less than sell price
             return new MatchEngineCmdReply<>(MatchEngineCmdReplyType.Success,
@@ -72,17 +75,17 @@ public class MatchAlgo {
         }
     }
 
-    private Optional<String> validateSellOrder(final Order order, final OrderBook orderBook) {
+    private String validateSellOrder(final Order order, final OrderBook orderBook) {
         if(order.getOrderType() == OrderType.Limit) {
-            final Optional<PriceLevel> priceLevel = orderBook.getLowestSellSidePriceLevel();
-            if (priceLevel.isPresent()) {
-                final double lowestSellPrice = priceLevel.get().getPrice();
+            final PriceLevel priceLevel = orderBook.getLowestSellSidePriceLevel();
+            if (priceLevel != null) {
+                final double lowestSellPrice = priceLevel.getPrice();
                 if (order.getPrice() < lowestSellPrice - VALID_PRICE_RANGE) {
-                    return Optional.of(PRICE_IS_OUT_OF_RANGE);
+                    return PRICE_IS_OUT_OF_RANGE;
                 }
             }
         }
-        return Optional.empty();
+        return null;
     }
 
     private MatchResult addOrder(final Order order,
@@ -121,7 +124,10 @@ public class MatchAlgo {
         Order oppositeSideOrder;
         while(iterator.hasNext()) {
             oppositeSideOrder = iterator.next();
-            match(order, oppositeSideOrder).ifPresent(matchResult::addExecution);
+            Execution execution = match(order, oppositeSideOrder);
+            if(execution != null){
+                matchResult.addExecution(execution);
+            }
             if(oppositeSideOrder.fullFilled()){
                 matchResult.fullfilledOppositeSideOrders.add(oppositeSideOrder);
             }
@@ -130,23 +136,23 @@ public class MatchAlgo {
         }
     }
 
-    private Optional<Execution> match(final Order order, final Order oppositeSideOrder) {
+    private Execution match(final Order order, final Order oppositeSideOrder) {
         //prevent self match
         if(oppositeSideOrder.getUserId() == order.getUserId()){
-            return Optional.empty();
+            return null;
         }
         //all market order on both side
         if (oppositeSideOrder.getOrderType() == OrderType.Market && order.getOrderType() == OrderType.Market) {
-            return Optional.empty();
+            return null;
         }
         double execPrice = oppositeSideOrder.getPrice();
         if(oppositeSideOrder.getOrderType() == OrderType.Market){
             execPrice = order.getPrice();
         }
-        final Optional<Execution> execution;
+        final Execution execution;
         final int execQty = Math.min(order.getLeaveQty(), oppositeSideOrder.getLeaveQty());
-        execution = Optional.of(new Execution(order.getOrderId(), order.getSide(),
-                oppositeSideOrder.getOrderId(), execPrice, execQty));
+        execution = new Execution(order.getOrderId(), order.getSide(),
+                oppositeSideOrder.getOrderId(), execPrice, execQty);
         order.updateLeaveQty(order.getLeaveQty() - execQty);
         oppositeSideOrder.updateLeaveQty(oppositeSideOrder.getLeaveQty() - execQty);
         return execution;
